@@ -6,12 +6,26 @@
 <title>Ghar 3D Model</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #dfe6ec; font-family: system-ui, sans-serif; }
-  #panel { position: fixed; right: 12px; top: 10px; max-width: 280px; background: #fffe; padding: 8px 12px;
-           border-radius: 8px; font-size: 13px; box-shadow: 0 2px 8px #0003; }
-  #panel summary { cursor: pointer; font-weight: 600; }
-  #panel label { display: block; margin: 8px 0; }
-  #panel select { max-width: 100%; }
-  #panel .hint { margin: 8px 0 0; color: #555; }
+  #panel { position: fixed; right: 12px; top: 12px; width: 250px; max-width: calc(100vw - 24px); box-sizing: border-box;
+           background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(8px); color: #1f2933;
+           border-radius: 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); font-size: 14px; }
+  #panel summary { list-style: none; cursor: pointer; user-select: none; }
+  #panel summary::-webkit-details-marker { display: none; }
+  #panel > summary { padding: 10px 14px; font-weight: 600; display: flex; justify-content: space-between; }
+  #panel > summary::after { content: '\25BE'; transition: transform 0.2s; }
+  #panel:not([open]) > summary::after { transform: rotate(-90deg); }
+  #panel .body { padding: 0 10px 10px; }
+  .group { background: #f3f5f7; border-radius: 9px; margin-top: 8px; }
+  .group > summary { padding: 8px 10px; font-weight: 600; font-size: 13px; color: #52606d; display: flex; justify-content: space-between; }
+  .group > summary::after { content: '+'; font-weight: 400; }
+  .group[open] > summary::after { content: '\2212'; }
+  .group .rows { padding: 0 10px 10px; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; cursor: pointer; }
+  .row input { accent-color: #3b7c86; width: 16px; height: 16px; margin: 0; }
+  .field { display: block; margin: 4px 0 8px; font-size: 12px; color: #52606d; }
+  .field select { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; font-size: 13px;
+                  border: 1px solid #cbd2d9; border-radius: 7px; background: #fff; color: #1f2933; }
+  #panel .hint { margin: 10px 2px 0; font-size: 12px; color: #7b8794; line-height: 1.4; }
 </style>
 <script type="importmap">
 { "imports": {
@@ -23,15 +37,30 @@
 <body>
 <details id="panel">
   <summary>Options</summary>
-  <label>First floor<br><select id="floor">
-      <option value="d1">Design 1 (original)</option>
-      <option value="d4" selected>Design 4 (master at back, guest at front, open hall)</option>
-      <option value="hide">Hide first floor</option>
-    </select></label>
-  <label><input type="checkbox" id="outer" checked> Ground floor outer walls</label>
-  <label><input type="checkbox" id="upOuter" checked> First floor outer walls</label>
-  <label><input type="checkbox" id="labels"> Room names</label>
-  <p class="hint">Drag to rotate · Scroll to zoom · Right-drag to move</p>
+  <div class="body">
+    <details class="group">
+      <summary>Ground floor</summary>
+      <div class="rows">
+        <label class="row"><input type="checkbox" id="outer" checked autocomplete="off"> Outer walls</label>
+        <label class="row"><input type="checkbox" id="groundNames" autocomplete="off"> Room names</label>
+      </div>
+    </details>
+    <details class="group" open>
+      <summary>First floor</summary>
+      <div class="rows">
+        <label class="field">Layout
+          <select id="floor" autocomplete="off">
+            <option value="d1">Design 1 (original)</option>
+            <option value="d4" selected>Design 4 (open hall)</option>
+            <option value="hide">Hide first floor</option>
+          </select>
+        </label>
+        <label class="row"><input type="checkbox" id="upOuter" checked autocomplete="off"> Outer walls</label>
+        <label class="row"><input type="checkbox" id="upperNames" autocomplete="off"> Room names</label>
+      </div>
+    </details>
+    <p class="hint">Drag to rotate · Scroll or pinch to zoom · Right-drag to move</p>
+  </div>
 </details>
 <script type="module">
 import * as THREE from 'three';
@@ -100,14 +129,23 @@ const tileTex = canvasTex(256, (g, s) => {                         // one tile: 
   }
   g.strokeStyle = 'rgba(70,65,60,0.5)'; g.lineWidth = 5; g.strokeRect(0, 0, s, s);
 });
-const woodTex = canvasTex(256, (g, s) => {                         // brown wood with grain lines
-  g.fillStyle = '#9a6a3c'; g.fillRect(0, 0, s, s);
+const woodTex = canvasTex(256, (g, s) => {                         // light wood with grain lines (tinted per use)
+  g.fillStyle = '#c99a66'; g.fillRect(0, 0, s, s);
   for (let y = 0; y < s; y += 3) {
     g.fillStyle = `rgba(${70 + Math.random() * 40},${40 + Math.random() * 20},18,${0.12 + Math.random() * 0.3})`;
     g.fillRect(0, y + Math.sin(y) * 1.5, s, 1 + Math.random() * 2);
   }
 });
 const graniteTex = canvasTex(256, (g, s) => { g.fillStyle = '#d6d6d6'; g.fillRect(0, 0, s, s); speckle(g, s, 5000, ['#8a8a8a', '#ffffff', '#5a5a5a', '#bdbdbd'], 2); });
+const plankTex = canvasTex(256, (g, s) => {                        // 2' x 2' of oak floor planks (4 per tile, staggered)
+  const w = s / 4;
+  for (let i = 0; i < 4; i++) {
+    g.fillStyle = ['#caa27a', '#c39a70', '#d0a982', '#bf9468'][i]; g.fillRect(i * w, 0, w, s);
+    for (let y = 0; y < s; y += 3) { g.fillStyle = `rgba(90,60,30,${Math.random() * 0.12})`; g.fillRect(i * w, y, w, 1); }
+    g.fillStyle = 'rgba(60,40,20,0.45)'; g.fillRect(i * w, 0, 2, s);
+    const cut = (i % 2 ? 0.3 : 0.75) * s; g.fillRect(i * w, cut, w, 2);
+  }
+});
 const plasterTex = canvasTex(256, (g, s) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, s, s); speckle(g, s, 4000, ['rgba(0,0,0,0.045)', 'rgba(0,0,0,0.025)'], 2); });
 const fabricTex = canvasTex(128, (g, s) => {
   g.fillStyle = '#ffffff'; g.fillRect(0, 0, s, s);
@@ -129,7 +167,7 @@ function texMat(tex, color, repX, repZ, roughness = 0.8) {          // own copy 
 
 const mat = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 });
 const plaster = c => new THREE.MeshStandardMaterial({ color: c, map: plasterTex, roughness: 0.95 });
-const wallMat = plaster(0xfaf7f0), upWallMat = plaster(0xf2cfa4);
+const wallMat = plaster(0xfaf7f0), upWallMat = plaster(0xece3d6);            // warm white downstairs, soft greige upstairs
 const stairMat = new THREE.MeshStandardMaterial({ color: 0xc27a55, map: graniteTex, roughness: 0.5 });
 function box(x0, z0, x1, z1, y0, y1, m) {
   const b = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), m);
@@ -233,7 +271,7 @@ upOuter.push(up(0, BF, BR, D + 3, H, 2 * H + SLAB, upWallMat));                 
 upOuter.push(up(0, D, T, BF, H, 2 * H + SLAB, upWallMat));
 
 // Brown frame around every door/gate opening (two side posts + top), sticking out slightly from the wall
-const doorMat = new THREE.MeshStandardMaterial({ color: 0x8a6448, map: woodTex, roughness: 0.5 }), FW = 0.25, P = 0.06;
+const doorMat = new THREE.MeshStandardMaterial({ color: 0x6e4a33, map: woodTex, roughness: 0.45 }), FW = 0.25, P = 0.06;
 function door(x0, z0, x1, z1, y0 = 0, h = DOOR) {
   const alongX = x1 - x0 > z1 - z0;
   const part = (a0, a1, y1, y2) => alongX
@@ -256,9 +294,12 @@ function win(x0, z0, x1, z1, sill, top) {
 const F = H + SLAB, FD = D + 3;
 const fw = (x0, z0, x1, z1, y0 = F, y1 = F + H) => up(x0, z0, x1, z1, y0, y1, upWallMat);
 const floor = (x0, z0, x1, z1, c, t = 0.04, tile = 2) => add(tiled(x0, z0, x1, z1, F, F + t, c, tile));
+const planks = (x0, z0, x1, z1, t = 0.04) =>                         // wooden floor for bedrooms
+  up(x0, z0, x1, z1, F, F + t, texMat(plankTex, 0xffffff, (x1 - x0) / 2, (z1 - z0) / 2, 0.5));
 upOuter.push(fw(0, 0, W, T), fw(0, T, T, D), fw(W - T, T, W, 20.5)); // first-floor outer walls (front = balcony walls)
 upOuter.push(fw(W - T, 21, W, FD));                                     // right
 upOuter.push(fw(7, FD - T, W - T, FD));                                 // front
+upOuter.push(...win(1.25, BF, 6.25, D + 3, LAND + 1.5 - F, 6));          // road-side window over the balcony (small lenter)
 const shellDoorLeft = () => {                                           // design 1
   fw(7, 20.5, W, 21);                                                   // back
   fw(7, 21, 7.5, 21.2); fw(7, 24, 7.5, FD); fw(7, 21.2, 7.5, 24, F + DOOR); // left + door
@@ -267,20 +308,22 @@ const shellDoorLeft = () => {                                           // desig
 
 // Furniture and fittings (feet): king bed 6'4" x 7', sofas 2'11" deep, WC 1'2" x 2'2", basin 1'8" x 1'4",
 // washing machine 2' x 2', fridge 2'6" x 2'6", kitchen counters and wardrobes 2' deep
-const wood = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.55 }), joint = mat(0x3b2410);
+const wood = new THREE.MeshStandardMaterial({ color: 0x8a6a52, map: woodTex, roughness: 0.45 });   // walnut
+const laminate = new THREE.MeshStandardMaterial({ color: 0xf1ece4, roughness: 0.35 }), joint = mat(0xa39a8e);
 const fabric = c => new THREE.MeshStandardMaterial({ color: c, map: fabricTex, roughness: 0.95 });
-const cloth = fabric(0xf1ece2), pillow = fabric(0xffffff), blanket = fabric(0x5b7fa6);
-const sofaMat = fabric(0x5d6d7e), cushion = fabric(0x7b8b9d);
+const cloth = fabric(0xfbfaf7), pillow = fabric(0xffffff), blanket = fabric(0x5f7a8c), throwMat = fabric(0xc9824f);
+const headMat = fabric(0xb9ad9d), accent = fabric(0xd9a441), rugMat = fabric(0xd6cab8);
+const sofaMat = fabric(0x4f6d73), cushion = fabric(0x5f8087);
 const white = new THREE.MeshStandardMaterial({ color: 0xf7f7f7, roughness: 0.15 });
 const steel = new THREE.MeshStandardMaterial({ color: 0xc0c8d0, metalness: 0.8, roughness: 0.3 });
 const tray = new THREE.MeshStandardMaterial({ color: 0xdde7ec, roughness: 0.3 });
 const tvMat = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.2 });
-const cabinet = mat(0xe9e4da), graniteTop = new THREE.MeshStandardMaterial({ color: 0x55595e, map: graniteTex, roughness: 0.25 });
+const cabinet = mat(0x9fb49b), graniteTop = new THREE.MeshStandardMaterial({ color: 0x55595e, map: graniteTex, roughness: 0.25 });
 const fridgeMat = new THREE.MeshStandardMaterial({ color: 0xdfe3e6, metalness: 0.3, roughness: 0.35 });
-const potMat = mat(0xb5651d), leafMat = mat(0x3f7d3a);
 function bed(x0, z0, x1, z1, head) {                                                // headboard on the 'n' / 's' / 'e' / 'w' side
-  up(x0, z0, x1, z1, F, F + 1, wood);                                               // frame
-  up(x0 + 0.1, z0 + 0.1, x1 - 0.1, z1 - 0.1, F + 1, F + 1.75, cloth);               // mattress
+  up(x0, z0, x1, z1, F + 0.25, F + 1, wood);                                        // frame on a recessed base
+  up(x0 + 0.3, z0 + 0.3, x1 - 0.3, z1 - 0.3, F, F + 0.25, joint);
+  up(x0 + 0.1, z0 + 0.1, x1 - 0.1, z1 - 0.1, F + 1, F + 1.7, cloth);                // mattress
   // a = along the bed measured from the head end, b = across; mapped back to x / z
   const alongZ = head === 'n' || head === 's', flip = head === 's' || head === 'e';
   const [a0, a1, b0, b1] = alongZ ? [z0, z1, x0, x1] : [x0, x1, z0, z1];
@@ -289,10 +332,14 @@ function bed(x0, z0, x1, z1, head) {                                            
     return alongZ ? up(v0, p, v1, q, y0, y1, m) : up(p, v0, q, v1, y0, y1, m);
   };
   const L = a1 - a0, mid = (b0 + b1) / 2;
-  put(0, 0.3, b0, b1, F, F + 3.5, wood);                                            // headboard
-  put(0.5, 1.8, b0 + 0.4, mid - 0.2, F + 1.75, F + 2.15, pillow);
-  put(0.5, 1.8, mid + 0.2, b1 - 0.4, F + 1.75, F + 2.15, pillow);
-  put(2.2, L, b0 - 0.05, b1 + 0.05, F + 1.3, F + 1.82, blanket);                    // blanket over the lower part
+  put(0, 0.35, b0 - 0.3, b1 + 0.3, F, F + 4.2, headMat);                            // padded headboard, wider than the bed
+  put(0.35, 0.45, b0 + 0.2, b1 - 0.2, F + 2.2, F + 3.9, headMat);                   // raised centre panel
+  put(0.5, 1.8, b0 + 0.4, mid - 0.2, F + 1.7, F + 2.3, pillow);
+  put(0.5, 1.8, mid + 0.2, b1 - 0.4, F + 1.7, F + 2.3, pillow);
+  put(1.9, 2.3, b0 + 1.2, mid - 0.3, F + 1.7, F + 2.4, accent);                     // two accent cushions
+  put(1.9, 2.3, mid + 0.3, b1 - 1.2, F + 1.7, F + 2.4, accent);
+  put(2.6, L, b0 - 0.05, b1 + 0.05, F + 1.25, F + 1.8, blanket);                    // duvet
+  put(L - 1.7, L - 0.7, b0 - 0.08, b1 + 0.08, F + 1.8, F + 1.86, throwMat);         // throw across the foot
 }
 function sofa(x0, z0, x1, z1, back) {                                               // back against the 'n' / 's' / 'e' / 'w' wall
   const alongX = back === 'n' || back === 's';
@@ -308,7 +355,12 @@ function sofa(x0, z0, x1, z1, back) {                                           
     if (alongX) { const [d0, d1] = back === 'n' ? [z0 + 0.8, z1 - 0.05] : [z0 + 0.05, z1 - 0.8]; up(c0, d0, c1, d1, F + 1.05, F + 1.55, cushion); }
     else { const [d0, d1] = back === 'w' ? [x0 + 0.8, x1 - 0.05] : [x0 + 0.05, x1 - 0.8]; up(d0, c0, d1, c1, F + 1.05, F + 1.55, cushion); }
   }
+  for (const [c0, c1] of [[s0 + 0.1, s0 + 1.1], [s1 - 1.1, s1 - 0.1]]) {           // accent pillows against the backrest
+    if (alongX) { const [d0, d1] = back === 'n' ? [z0 + 0.8, z0 + 1.15] : [z1 - 1.15, z1 - 0.8]; up(c0, d0, c1, d1, F + 1.55, F + 2.45, accent); }
+    else { const [d0, d1] = back === 'w' ? [x0 + 0.8, x0 + 1.15] : [x1 - 1.15, x1 - 0.8]; up(d0, c0, d1, c1, F + 1.55, F + 2.45, accent); }
+  }
 }
+const rug = (x0, z0, x1, z1) => up(x0, z0, x1, z1, F + 0.04, F + 0.08, rugMat);
 function table(x0, z0, x1, z1, h = 1.4) {                                           // top + 4 legs
   up(x0, z0, x1, z1, F + h - 0.12, F + h, wood);
   for (const [x, z] of [[x0, z0], [x1 - 0.15, z0], [x0, z1 - 0.15], [x1 - 0.15, z1 - 0.15]]) up(x, z, x + 0.15, z + 0.15, F, F + h - 0.12, wood);
@@ -328,36 +380,28 @@ function basin(x0, z0, x1, z1) {                                                
 }
 const shower = (x0, z0, x1, z1) => up(x0, z0, x1, z1, F, F + 0.12, tray);           // shower tray
 const glassPanel = (x0, z0, x1, z1) => up(x0, z0, x1, z1, F + 0.12, F + 6.5, glassMat);
-function plant(x, z) {                                                              // pot plant
-  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.42, 1.2, 16), potMat);
-  pot.position.set(x, F + 0.6, z);
-  const leaves = new THREE.Mesh(new THREE.IcosahedronGeometry(0.95, 1), leafMat);
-  leaves.position.set(x, F + 2.2, z);
-  leaves.scale.set(1, 1.3, 1);
-  for (const m of [pot, leaves]) { m.castShadow = m.receiveShadow = true; scene.add(m); add(m); }
-}
 
 // ---- Design 1: the layout built step by step with the owner ----
 design = d1;
 shellDoorLeft();
-floor(7.5, 21, W - T, FD - T, 0xc8a2d6, 0.02);                          // road-side room
+planks(7.5, 21, W - T, FD - T, 0.02);                                   // road-side room
 // Balcony strip walled off from the room and split: kitchen (left), washroom (right, Irshad side)
 fw(7.5, D - 0.5, 9, D); fw(11.5, D - 0.5, 16.5, D); fw(18.5, D - 0.5, W - T, D); // partition
 fw(9, D - 0.5, 11.5, D, F + DOOR); fw(16.5, D - 0.5, 18.5, D, F + DOOR);         // kitchen + washroom doors
 fw(14, D, 14.5, FD - T);                                                          // kitchen | washroom
-floor(14.5, D, W - T, FD - T, 0x6fb7c9, 0.04, 1);                                 // washroom tiles
-floor(7.5, D, 14, FD - T, 0xf2d16b);                                              // kitchen floor
+floor(14.5, D, W - T, FD - T, 0xc9d6de, 0.04, 1);                                 // washroom tiles
+floor(7.5, D, 14, FD - T, 0xdcdcd6);                                              // kitchen floor
 // Over the two ground-floor back rooms (x T..W-T, z T..10.75, front wall on top of theirs):
 // ~70% room (left), ~30% right: one door from the room into a dressing area with wardrobes along the
 // outer wall, and from there a door into the washroom behind it.
 fw(T, 10.75, 6, 11.25); fw(9, 10.75, W - T, 11.25); fw(6, 10.75, 9, 11.25, F + DOOR); // front wall + room door
 fw(14.5, T, 15, 7.5); fw(14.5, 10, 15, 10.75); fw(14.5, 7.5, 15, 10, F + DOOR);    // room | dressing, one door
 fw(15, 6.25, 15.5, 6.75); fw(18, 6.25, W - T, 6.75); fw(15.5, 6.25, 18, 6.75, F + DOOR); // dressing | washroom + door
-up(W - T - 2, 6.75, W - T, 10.75, F, F + DOOR, wood);                             // wardrobes, 2' deep
+up(W - T - 2, 6.75, W - T, 10.75, F, F + DOOR, laminate);                         // wardrobes, 2' deep
 for (const z of [8.08, 9.41]) up(W - T - 2.04, z - 0.03, W - T - 2, z + 0.03, F, F + DOOR, joint); // shutter joints
-floor(T, T, 14.5, 10.75, 0xa8d5ba);                                                // room     13'9" x 10'
-floor(15, T, W - T, 6.25, 0x6fb7c9, 0.04, 1);                                      // washroom 5'8" x 5'6"
-floor(15, 6.75, W - T, 10.75, 0xe8d5b0);                                           // dressing 5'8" x 4'
+planks(T, T, 14.5, 10.75);                                                                    // room     13'9" x 10'
+floor(15, T, W - T, 6.25, 0xc9d6de, 0.04, 1);                                      // washroom 5'8" x 5'6"
+floor(15, 6.75, W - T, 10.75, 0xe6dccd);                                           // dressing 5'8" x 4'
 
 // ---- Design 4: master suite at the back, guest room at the front, an open hall in the middle ----
 //   The stair top opens into a big open hall (~165 sq ft with the stair top). Every room opens off it:
@@ -378,23 +422,24 @@ fw(13.5, 12, 14, 14); fw(13.5, 16.5, 14, 20.5); fw(13.5, 14, 14, 16.5, F + DOOR)
 fw(13.5, 21, 14, 22); fw(13.5, 24.5, 14, 26.5); fw(13.5, 22, 14, 24.5, F + DOOR);  // hall | common washroom + door
 fw(7.5, 26.5, 8.5, 27); fw(11, 26.5, W - T, 27); fw(8.5, 26.5, 11, 27, F + DOOR);  // hall + washroom | guest room, door
 
-floor(T, T, 7, 7.5, 0x6fb7c9, 0.04, 1);                                            // master bath      6'3" x 6'9"
-floor(T, 8, 7, 11.5, 0xe8d5b0);                                                    // dressing         6'3" x 3'6"
-floor(7.5, T, W - T, 11.5, 0xc8a2d6);                                              // master bedroom  13'2" x 10'9"
-floor(14, 12, W - T, 20.5, 0xf2d16b);                                              // kitchen          6'8" x 8'6"
-floor(T, 12, 13.5, 20.5, 0xe6dcc6); floor(7, 20.5, 13.5, 26.5, 0xe6dcc6);       // open hall
-floor(T, 20.5, 7, TOP_Z, 0xe6dcc6);                                                // stair top (part of the hall)
-floor(14, 21, W - T, 26.5, 0x6fb7c9, 0.04, 1);                                     // common washroom  6'8" x 5'6"
-floor(7.5, 27, W - T, FD - T, 0xd9c38a);                                           // guest room      13'2" x 8'
+floor(T, T, 7, 7.5, 0xc9d6de, 0.04, 1);                                            // master bath      6'3" x 6'9"
+floor(T, 8, 7, 11.5, 0xe6dccd);                                                    // dressing         6'3" x 3'6"
+planks(7.5, T, W - T, 11.5);                                                              // master bedroom  13'2" x 10'9"
+floor(14, 12, W - T, 20.5, 0xdcdcd6);                                              // kitchen          6'8" x 8'6"
+floor(T, 12, 13.5, 20.5, 0xeee9e1); floor(7, 20.5, 13.5, 26.5, 0xeee9e1);       // open hall
+floor(T, 20.5, 7, TOP_Z, 0xeee9e1);                                                // stair top (part of the hall)
+floor(14, 21, W - T, 26.5, 0xc9d6de, 0.04, 1);                                     // common washroom  6'8" x 5'6"
+floor(7.5, 27, W - T, FD - T, 0xe3d5bd);                                           // guest room      13'2" x 8'
 
 // master bath: shower (NW corner), WC (north wall, faces south), basin (west wall)
 shower(T, T, 3.75, 3.75); glassPanel(3.7, T, 3.75, 2.5);
 wc(4.8, T, 6, T + 2.2, 'n');
 basin(T, 4.5, T + 1.33, 6.2);
 // dressing: slim wardrobe (1'9" deep) along the west wall
-up(T, 8, T + 1.75, 11.5, F, F + DOOR, wood);
+up(T, 8, T + 1.75, 11.5, F, F + DOOR, laminate);
 up(T + 1.75, 9.72, T + 1.79, 9.78, F, F + DOOR, joint);
 // master bedroom: king bed against the east wall (head east), bedside tables, TV on the west wall
+rug(10.2, 2.4, 14.2, 9.8);
 bed(13.67, 2.95, W - T, 9.28, 'e');
 up(19.17, 1.3, 20.57, 2.8, F, F + 1.8, wood); up(19.17, 9.43, 20.57, 10.93, F, F + 1.8, wood);
 up(7.5, 2.5, 9, 7.5, F, F + 1.8, wood); up(7.5, 3.25, 7.65, 6.75, F + 3, F + 5.3, tvMat);
@@ -411,10 +456,9 @@ up(W - T - 2, 24.5, W - T, 26.5, F, F + 2.8, white); up(W - T - 1.6, 24.9, W - T
 // guest room: 3-seat sofa on the east wall, 2-seat sofa under the road windows, coffee table, TV on the west wall
 sofa(17.77, 28, W - T, 34.5, 'e');
 sofa(11, 32.25, 16, FD - T, 's');
+rug(10.8, 28.3, 17.2, 32);
 table(12.5, 29.3, 16, 31.1);
 up(7.5, 29, 9, 34, F, F + 1.8, wood); up(7.5, 29.75, 7.65, 33.25, F + 3, F + 5.3, tvMat);
-// hall: kept open; two plants in the corners
-plant(1.6, 12.9); plant(12.8, 25.8);
 
 add(...door(9, 11.5, 11.5, 12, F));          // master bedroom, from the hall
 add(...door(7, 8.5, 7.5, 11, F));            // dressing, from the bedroom
@@ -441,10 +485,10 @@ add(...door(15.5, 6.25, 18, 6.75, F));      // washroom, from the dressing area
 design = null;
 
 
-// Labels (all in one group so the "Naam dikhao" checkbox can hide them)
-const labelGroup = new THREE.Group();
-labelGroup.visible = false;                                        // names hidden by default
-scene.add(labelGroup);
+// Room names: one group per floor (hidden by default), each with its own checkbox
+const groundNames = new THREE.Group(), upperNames = new THREE.Group();
+groundNames.visible = upperNames.visible = false;
+scene.add(groundNames, upperNames);
 function label(text, x, y, z, size = 1.4) {
   const c = document.createElement('canvas'), g = c.getContext('2d');
   c.width = 512; c.height = 128;
@@ -455,14 +499,14 @@ function label(text, x, y, z, size = 1.4) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
   s.scale.set(size * 4, size, 1);
   s.position.set(x, y, z);
-  labelGroup.add(s);
+  (y > F ? upperNames : groundNames).add(s);
   return s;
 }
 label('LOBBY', 12, 4, 16);
 label('ROOM 1', 5.6, 4, 5.5);
 label('ROOM 2', 16, 4, 5.5);
 label('ROOM 13\' x 10\'11"', 14, 4, 26.5, 1.6);
-label('STAIRS', 2.4, 12, 24.5, 1.1);
+label('STAIRS', 2.4, 8.5, 24.5, 1.1);
 label('WASHROOM', 2.3, 3, 29.5, 1);
 label('ROAD 9\'-0" WIDE', W / 2, 1, D + 7.5, 1.8);
 label('HOUSE OF OTHER', W / 2, 2, -4, 1.6);
@@ -497,7 +541,8 @@ const syncUpper = () => {
 floorSel.onchange = upOuterCb.onchange = syncUpper;
 syncUpper();
 toggle('outer', outer);
-document.getElementById('labels').onchange = e => (labelGroup.visible = e.target.checked);
+document.getElementById('groundNames').onchange = e => (groundNames.visible = e.target.checked);
+document.getElementById('upperNames').onchange = e => (upperNames.visible = e.target.checked);
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
