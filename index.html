@@ -14,7 +14,7 @@
   #panel > summary { padding: 10px 14px; font-weight: 600; display: flex; justify-content: space-between; }
   #panel > summary::after { content: '\25BE'; transition: transform 0.2s; }
   #panel:not([open]) > summary::after { transform: rotate(-90deg); }
-  #panel .body { padding: 0 10px 10px; }
+  #panel .body { padding: 0 10px 10px; max-height: calc(100vh - 70px); overflow-y: auto; }
   .group { background: #f3f5f7; border-radius: 9px; margin-top: 8px; }
   .group > summary { padding: 8px 10px; font-weight: 600; font-size: 13px; color: #52606d; display: flex; justify-content: space-between; }
   .group > summary::after { content: '+'; font-weight: 400; }
@@ -25,6 +25,10 @@
   .field { display: block; margin: 4px 0 8px; font-size: 12px; color: #52606d; }
   .field select { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; font-size: 13px;
                   border: 1px solid #cbd2d9; border-radius: 7px; background: #fff; color: #1f2933; }
+  .sizes h4 { margin: 8px 0 4px; font-size: 12px; color: #3b7c86; }
+  .sizes table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .sizes td { padding: 3px 0; border-bottom: 1px solid #e4e7eb; }
+  .sizes td:last-child { text-align: right; white-space: nowrap; color: #52606d; }
   #panel .hint { margin: 10px 2px 0; font-size: 12px; color: #7b8794; line-height: 1.4; }
 </style>
 <script type="importmap">
@@ -59,6 +63,10 @@
         <label class="row"><input type="checkbox" id="upperNames" autocomplete="off"> Room names</label>
       </div>
     </details>
+    <details class="group">
+      <summary>Room sizes</summary>
+      <div class="rows sizes" id="sizes"></div>
+    </details>
     <p class="hint">Drag to rotate · Scroll or pinch to zoom · Right-drag to move</p>
   </div>
 </details>
@@ -87,6 +95,8 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(W / 2, 0, D / 2);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI / 2 - 0.05;
+controls.minDistance = 4;
+controls.maxDistance = 85;                            // zoom-out limit: whole house stays in view
 
 // Soft daylight: sky/ground fill + a room-style environment for reflections + one sun for shadows
 scene.add(new THREE.HemisphereLight(0xeaf3ff, 0x8a8170, 0.9));
@@ -369,9 +379,10 @@ function ctr(x0, z0, x1, z1) {                                                  
   up(x0, z0, x1, z1, F, F + 2.65, cabinet);
   up(x0, z0, x1, z1, F + 2.65, F + 2.8, graniteTop);
 }
-function wc(x0, z0, x1, z1, wall) {                                                 // cistern on the n / s wall
+function wc(x0, z0, x1, z1, wall) {                                                 // cistern on the n / s / e wall
   up(x0, z0, x1, z1, F, F + 1.3, white);
   if (wall === 'n') up(x0, z0, x1, z0 + 0.6, F, F + 2.7, white);
+  else if (wall === 'e') up(x1 - 0.6, z0, x1, z1, F, F + 2.7, white);
   else up(x0, z1 - 0.6, x1, z1, F, F + 2.7, white);
 }
 function basin(x0, z0, x1, z1) {                                                    // basin counter + steel bowl
@@ -416,10 +427,10 @@ design = d4;
 fw(13.5, 20.5, W, 21);                                                             // hall | common washroom (shell back wall, east part)
 fw(7, 25.2, 7.5, FD);                                                              // stairwell edge = hall + guest room west wall
 fw(T, 11.5, 9, 12); fw(11.5, 11.5, W - T, 12); fw(9, 11.5, 11.5, 12, F + DOOR);    // back rooms | kitchen + hall, master door
-fw(7, T, 7.5, 8.5); fw(7, 11, 7.5, 11.5); fw(7, 8.5, 7.5, 11, F + DOOR);           // bath + dressing | bedroom, dressing door
+fw(7, T, 7.5, 8); fw(7, 10.25, 7.5, 11.5); fw(7, 8, 7.5, 10.25, F + DOOR);         // bath + dressing | bedroom, dressing door (against the bath wall)
 fw(T, 7.5, 3.5, 8); fw(6, 7.5, 7, 8); fw(3.5, 7.5, 6, 8, F + DOOR);                // bath | dressing + door (bath wall pushed into the dressing)
 fw(13.5, 12, 14, 14); fw(13.5, 16.5, 14, 20.5); fw(13.5, 14, 14, 16.5, F + DOOR);  // hall | kitchen + door
-fw(13.5, 21, 14, 22); fw(13.5, 24.5, 14, 26.5); fw(13.5, 22, 14, 24.5, F + DOOR);  // hall | common washroom + door
+fw(13.5, 21, 14, 23.5); fw(13.5, 26, 14, 26.5); fw(13.5, 23.5, 14, 26, F + DOOR);  // hall | common washroom + door
 fw(7.5, 26.5, 8.5, 27); fw(11, 26.5, W - T, 27); fw(8.5, 26.5, 11, 27, F + DOOR);  // hall + washroom | guest room, door
 
 floor(T, T, 7, 7.5, 0xc9d6de, 0.04, 1);                                            // master bath      6'3" x 6'9"
@@ -435,24 +446,30 @@ floor(7.5, 27, W - T, FD - T, 0xe3d5bd);                                        
 shower(T, T, 3.75, 3.75); glassPanel(3.7, T, 3.75, 2.5);
 wc(4.8, T, 6, T + 2.2, 'n');
 basin(T, 4.5, T + 1.33, 6.2);
-// dressing: slim wardrobe (1'9" deep) along the west wall
-up(T, 8, T + 1.75, 11.5, F, F + DOOR, laminate);
-up(T + 1.75, 9.72, T + 1.79, 9.78, F, F + DOOR, joint);
+// dressing: L-shaped built-in wardrobe (1'3" deep, light oak) along the whole outer (west) wall and the
+// whole hall-side wall, leaving a 2'3" walkway from the bedroom door to the bath door
+const oak = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.5 });
+up(T, 8, T + 1.25, 11.5, F, F + DOOR, oak);
+up(T + 1.25, 10.25, 7, 11.5, F, F + DOOR, oak);
+for (const z of [9.15, 10.3]) up(T + 1.25, z - 0.03, T + 1.29, z + 0.03, F, F + DOOR, joint);
+for (const x of [3.25, 4.5, 5.75]) up(x - 0.03, 10.21, x + 0.03, 10.25, F, F + DOOR, joint);
 // master bedroom: king bed against the east wall (head east), bedside tables, TV on the west wall
-rug(10.2, 2.4, 14.2, 9.8);
-bed(13.67, 2.95, W - T, 9.28, 'e');
-up(19.17, 1.3, 20.57, 2.8, F, F + 1.8, wood); up(19.17, 9.43, 20.57, 10.93, F, F + 1.8, wood);
-up(7.5, 2.5, 9, 7.5, F, F + 1.8, wood); up(7.5, 3.25, 7.65, 6.75, F + 3, F + 5.3, tvMat);
-// kitchen: sink on the north counter, hob on the east counter (cook faces east), fridge in line with it
-ctr(14, 12, W - T - 2, 14); ctr(W - T - 2, 12, W - T, 17.8);
+rug(10.2, 1.2, 14.2, 7.4);
+bed(13.67, T, W - T, T + 6.33, 'e');                                               // side against the back wall
+up(19.17, 7.23, 20.57, 8.73, F, F + 1.8, wood);                                    // one bedside table
+up(7.5, 1.4, 9, 6.4, F, F + 1.8, wood); up(7.5, 2.15, 7.65, 5.65, F + 3, F + 5.3, tvMat);
+// kitchen: full L counter (north wall + whole east wall), sink on the north run, hob on the east run
+// (cook faces east); fridge in the corner beside the door
+ctr(14, 12, W - T - 2, 14); ctr(W - T - 2, 12, W - T, 20.5);
 up(15.2, 12.3, 17, 13.7, F + 2.8, F + 2.85, steel);                                // sink
 up(W - T - 1.6, 14.5, W - T - 0.5, 16.5, F + 2.8, F + 2.85, tvMat);               // hob
-up(W - T - 2.5, 18, W - T, 20.5, F, F + 5.5, fridgeMat);                           // fridge
-// common washroom: WC (north wall, faces south), basin by the door, shower (NE), washing machine (SE)
-wc(15.2, 21, 16.4, 23.2, 'n');
-basin(14.6, 25.17, 16.3, 26.5);
-shower(17.67, 21, W - T, 24); glassPanel(17.67, 21, 17.72, 22.8);
-up(W - T - 2, 24.5, W - T, 26.5, F, F + 2.8, white); up(W - T - 1.6, 24.9, W - T - 0.4, 26.1, F + 2.8, F + 2.85, steel); // washing machine
+up(14, 18, 16.5, 20.5, F, F + 5.5, fridgeMat);                                    // fridge
+// common washroom: washing machine in the corner right inside the door (reachable at once), basin next
+// to it, shower in the far corner behind glass, WC at the far end against the east wall
+up(14, 21, 16, 23, F, F + 2.8, white); up(14.4, 21.4, 15.6, 22.6, F + 2.8, F + 2.85, steel); // washing machine
+basin(16.2, 21, 17.85, 22.33);
+shower(17.92, 21, W - T, 24.25); glassPanel(17.92, 21, 17.97, 22.9); glassPanel(17.92, 24.2, W - T, 24.25);
+wc(W - T - 2.2, 24.6, W - T, 25.8, 'e');
 // guest room: 3-seat sofa on the east wall, 2-seat sofa under the road windows, coffee table, TV on the west wall
 sofa(17.77, 28, W - T, 34.5, 'e');
 sofa(11, 32.25, 16, FD - T, 's');
@@ -461,10 +478,10 @@ table(12.5, 29.3, 16, 31.1);
 up(7.5, 29, 9, 34, F, F + 1.8, wood); up(7.5, 29.75, 7.65, 33.25, F + 3, F + 5.3, tvMat);
 
 add(...door(9, 11.5, 11.5, 12, F));          // master bedroom, from the hall
-add(...door(7, 8.5, 7.5, 11, F));            // dressing, from the bedroom
+add(...door(7, 8, 7.5, 10.25, F));           // dressing, from the bedroom
 add(...door(3.5, 7.5, 6, 8, F));             // master bath, from the dressing
 add(...door(13.5, 14, 14, 16.5, F));         // kitchen, from the hall
-add(...door(13.5, 22, 14, 24.5, F));         // common washroom, from the hall
+add(...door(13.5, 23.5, 14, 26, F));         // common washroom, from the hall
 add(...door(8.5, 26.5, 11, 27, F));          // guest room, from the hall
 add(...win(8.25, FD - T, 10.75, FD, 3, 7));  // guest room, road side
 add(...win(11.75, FD - T, 15.75, FD, 3, 7));
@@ -538,8 +555,28 @@ const syncUpper = () => {
   d4.forEach(o => (o.visible = v === 'd4'));
   upOuter.forEach(o => (o.visible = on && upOuterCb.checked));
 };
-floorSel.onchange = upOuterCb.onchange = syncUpper;
+// Room sizes (inside the walls) for the "Room sizes" section, per floor; the first floor follows the layout
+const SIZES = {
+  ground: [['Room 1 (back left)', `9'9" x 10'`, 98], ['Room 2 (back right)', `9'8" x 10'`, 97],
+           ['Lobby', `19'11" x 9'3"`, 184], ['Road-side room', `13' x 10'11"`, 142],
+           ['Washroom (under stairs)', `2'9" x 7'1"`, 20], ['Balcony over gate', `6'9" x 2'3"`, 15]],
+  d1: [['Road-side room', `13'2" x 11'3"`, 148], ['Kitchen', `6'6" x 2'3"`, 15], ['Washroom (front)', `6'2" x 2'3"`, 14],
+       ['Back room', `13'9" x 10'`, 138], ['Dressing', `5'8" x 4'`, 23], ['Washroom (back)', `5'8" x 5'6"`, 31]],
+  d4: [['Master bedroom', `13'2" x 10'9"`, 142], ['Dressing / store', `6'3" x 3'6"`, 22], ['Master bath', `6'3" x 6'9"`, 42],
+       ['Kitchen', `6'8" x 8'6"`, 57], ['Open hall (with stair top)', `12'9" x 8'6" + more`, 176],
+       ['Common washroom', `6'8" x 5'6"`, 37], ['Guest room', `13'2" x 8'`, 105]],
+};
+const sizeTable = (title, rows) =>
+  `<h4>${title}</h4><table>${rows.map(([n, d, a]) => `<tr><td>${n}</td><td>${d} · ${a} sq ft</td></tr>`).join('')}</table>`;
+const renderSizes = () => {
+  const v = floorSel.value;
+  document.getElementById('sizes').innerHTML = sizeTable('Ground floor', SIZES.ground) +
+    (v === 'hide' ? '' : sizeTable(`First floor (${v === 'd1' ? 'Design 1' : 'Design 4'})`, SIZES[v]));
+};
+floorSel.onchange = () => { syncUpper(); renderSizes(); };
+upOuterCb.onchange = syncUpper;
 syncUpper();
+renderSizes();
 toggle('outer', outer);
 document.getElementById('groundNames').onchange = e => (groundNames.visible = e.target.checked);
 document.getElementById('upperNames').onchange = e => (upperNames.visible = e.target.checked);
