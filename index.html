@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ghar 3D Model</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #dfe6ec; font-family: system-ui, sans-serif; }
+  #info { position: fixed; left: 12px; top: 10px; background: #fffd; padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="info">Ghumane ke liye drag · Zoom ke liye scroll · Right-drag se khiskao
+  · <label>Upar ki manzil: <select id="floor">
+      <option value="d1">Design 1 (abhi wala)</option>
+      <option value="d2">Design 2 (naya)</option>
+      <option value="d3">Design 3 (bada master + mehman, vastu)</option>
+      <option value="d4" selected>Design 4 (master peeche, mehman aage, beech mein hall)</option>
+      <option value="hide">Chhupao</option>
+    </select></label>
+  · <label><input type="checkbox" id="outer" checked> Neeche bahar ki deewar dikhao</label>
+  · <label><input type="checkbox" id="upOuter" checked> Upar bahar ki deewar dikhao</label>
+  · <label><input type="checkbox" id="labels"> Naam dikhao</label></div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// Units = feet. x: left→right, z: back (House of Other) → front (Road). Origin = back-left outer corner.
+const H = 10, DOOR = 7;              // wall height, door-top height
+const W = 21.42, D = 32.75, T = 0.75; // plot 21'5" x 32'9", outer wall 9"
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xdfe9f2, 90, 220);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 500);
+camera.position.set(W / 2 + 28, 42, D + 30);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(W / 2, 0, D / 2);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI / 2 - 0.05;
+
+// Soft daylight: sky/ground fill + a room-style environment for reflections + one sun for shadows
+scene.add(new THREE.HemisphereLight(0xeaf3ff, 0x8a8170, 0.9));
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.45;
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.6);
+sun.position.set(-20, 50, 60);
+sun.target.position.set(W / 2, 0, D / 2);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40 });
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.03;
+scene.add(sun, sun.target);
+
+// Procedural textures (no image files needed): floor tiles, wood, granite, plaster, fabric, grass, road
+function canvasTex(size, draw) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  draw(c.getContext('2d'), size);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+function speckle(g, s, n, colors, size = 2) {
+  for (let i = 0; i < n; i++) {
+    g.fillStyle = colors[i % colors.length];
+    g.fillRect(Math.random() * s, Math.random() * s, size, size);
+  }
+}
+const tileTex = canvasTex(256, (g, s) => {                         // one tile: soft marble veins + grout line
+  g.fillStyle = '#f5f3ef'; g.fillRect(0, 0, s, s);
+  speckle(g, s, 1500, ['rgba(0,0,0,0.035)', 'rgba(255,255,255,0.6)'], 3);
+  g.strokeStyle = 'rgba(110,105,100,0.22)'; g.lineWidth = 1.5;
+  for (let i = 0; i < 3; i++) {
+    g.beginPath(); g.moveTo(Math.random() * s, 0);
+    g.bezierCurveTo(Math.random() * s, s / 3, Math.random() * s, 2 * s / 3, Math.random() * s, s); g.stroke();
+  }
+  g.strokeStyle = 'rgba(70,65,60,0.5)'; g.lineWidth = 5; g.strokeRect(0, 0, s, s);
+});
+const woodTex = canvasTex(256, (g, s) => {                         // brown wood with grain lines
+  g.fillStyle = '#9a6a3c'; g.fillRect(0, 0, s, s);
+  for (let y = 0; y < s; y += 3) {
+    g.fillStyle = `rgba(${70 + Math.random() * 40},${40 + Math.random() * 20},18,${0.12 + Math.random() * 0.3})`;
+    g.fillRect(0, y + Math.sin(y) * 1.5, s, 1 + Math.random() * 2);
+  }
+});
+const graniteTex = canvasTex(256, (g, s) => { g.fillStyle = '#d6d6d6'; g.fillRect(0, 0, s, s); speckle(g, s, 5000, ['#8a8a8a', '#ffffff', '#5a5a5a', '#bdbdbd'], 2); });
+const plasterTex = canvasTex(256, (g, s) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, s, s); speckle(g, s, 4000, ['rgba(0,0,0,0.045)', 'rgba(0,0,0,0.025)'], 2); });
+const fabricTex = canvasTex(128, (g, s) => {
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < s; i += 2) { g.fillStyle = 'rgba(0,0,0,0.05)'; g.fillRect(i, 0, 1, s); g.fillRect(0, i, s, 1); }
+});
+const grassTex = canvasTex(256, (g, s) => { g.fillStyle = '#7d9a5b'; g.fillRect(0, 0, s, s); speckle(g, s, 9000, ['#6b884c', '#93ad6d', '#5d7843', '#a4b97d'], 2); });
+const roadTex = canvasTex(256, (g, s) => { g.fillStyle = '#4a4d51'; g.fillRect(0, 0, s, s); speckle(g, s, 9000, ['#3d4044', '#5b5e62', '#34373a', '#6a6d71'], 2); });
+scene.background = canvasTex(512, (g, s) => {                       // sky
+  const gr = g.createLinearGradient(0, 0, 0, s);
+  gr.addColorStop(0, '#7fb2e0'); gr.addColorStop(0.6, '#cfe2f2'); gr.addColorStop(1, '#eef4f8');
+  g.fillStyle = gr; g.fillRect(0, 0, s, s);
+});
+function texMat(tex, color, repX, repZ, roughness = 0.8) {          // own copy of the texture so the tiling fits the box
+  const t = tex.clone();
+  t.needsUpdate = true;
+  t.repeat.set(repX, repZ);
+  return new THREE.MeshStandardMaterial({ color, map: t, roughness });
+}
+
+const mat = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 });
+const plaster = c => new THREE.MeshStandardMaterial({ color: c, map: plasterTex, roughness: 0.95 });
+const wallMat = plaster(0xfaf7f0), upWallMat = plaster(0xf2cfa4);
+const stairMat = new THREE.MeshStandardMaterial({ color: 0xc27a55, map: graniteTex, roughness: 0.5 });
+function box(x0, z0, x1, z1, y0, y1, m) {
+  const b = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), m);
+  b.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  b.castShadow = b.receiveShadow = true;
+  scene.add(b);
+  return b;
+}
+// Floor with square tiles (`tile` feet each), tinted `color`
+const tiled = (x0, z0, x1, z1, y0, y1, color, tile = 2) =>
+  box(x0, z0, x1, z1, y0, y1, texMat(tileTex, color, (x1 - x0) / tile, (z1 - z0) / tile, 0.35));
+const wall = (x0, z0, x1, z1) => box(x0, z0, x1, z1, 0, H, wallMat);
+const lintel = (x0, z0, x1, z1) => box(x0, z0, x1, z1, DOOR, H, wallMat); // wall above a door gap
+
+// Ground, road, floors
+box(-15, -12, W + 15, D + 16, -0.6, -0.3, texMat(grassTex, 0xffffff, 16, 16, 1));
+box(-15, D + 3, W + 15, D + 12, -0.55, -0.28, texMat(roadTex, 0xffffff, 10, 2, 0.9)); // Road 9'-0" wide
+box(0, 0, W, D, -0.3, 0, plaster(0xb5aa98));                       // plinth
+tiled(T, 11.25, W - T, 20.5, 0, 0.02, 0xd9c38a);                   // lobby
+tiled(T, 20.5, 7, D - T, 0, 0.02, 0xd9c38a);                       // lobby front passage
+tiled(T, T, 10.5, 10.75, 0, 0.02, 0x8fb8d8);                       // back room, left
+tiled(11, T, W - T, 10.75, 0, 0.02, 0xe3a6b4);                     // back room, right
+tiled(7.5, 21, W - T, D - T, 0, 0.02, 0x9ccc9c);                   // room (front)
+
+// Outer walls (hidden by the "Neeche bahar ki deewar" checkbox)
+const outer = [
+  wall(0, 0, W, T),
+  wall(0, 0, T, D),
+  wall(W - T, 0, W, D),
+  box(6.5, D - T, 8.1, D, 0, DOOR, wallMat), box(7, D - T, 8.1, D, DOOR, H, wallMat), // pillar gate | room door
+  wall(11, D - T, W - T, D),                                       // stair side of the front wall: see washroom
+  lintel(8.1, D - T, 11, D),                                       // front room door (gate: see balcony)
+];
+
+// Inner walls
+// Two rooms side by side against the back wall, doors onto the lobby
+wall(10.5, T, 11, 10.75);                                                          // left room | right room
+wall(T, 10.75, 6, 11.25); wall(9, 10.75, 14, 11.25); wall(17, 10.75, W - T, 11.25); // rooms | lobby
+lintel(6, 10.75, 9, 11.25); lintel(14, 10.75, 17, 11.25);                          // room doors
+wall(7, 20.5, W - T, 21);                                                            // room | room
+wall(7, 21, 7.5, 21.8); wall(7, 24.8, 7.5, D - T); lintel(7, 21.8, 7.5, 24.8);      // passage | front room
+
+// U-stair: flight 1 along the left wall starts level with the road-side room's back wall (z=21)
+// and rises toward the road. The landing slab runs forward to the front wall and sits on top of
+// the gate opening; flight 2 turns back along the right wall (x=7) up to the next floor.
+const SLAB = 0.5, MID = 3.9, LAND = DOOR + SLAB, START = 21, LAND_Z = 28;
+const N1 = 10, N2 = 4, run = (LAND_Z - START) / N1, rise1 = LAND / N1, rise2 = (H - LAND) / N2;
+const TOP_Z = LAND_Z - N2 * run;                                                       // where flight 2 reaches the floor
+const WR_Z = START + 5 * run;                                                          // washroom back wall, under step 6
+for (let i = 0; i < N1; i++) {
+  const z0 = START + i * run, top = (i + 1) * rise1;
+  box(T, z0, MID, z0 + run, z0 >= WR_Z ? top - SLAB : 0, top, stairMat);            // steps over the washroom are a slab
+}
+box(T, LAND_Z, 7, D - T, DOOR, LAND, stairMat);                                       // landing over the gate
+for (let i = 0; i < N2; i++) {
+  const top = LAND + (i + 1) * rise2;
+  box(MID, LAND_Z - (i + 1) * run, 7, LAND_Z - i * run, top - SLAB, top, stairMat);
+}
+
+// Washroom entirely inside the space under flight 1 and the landing (x T..MID, z WR_Z..front wall);
+// its walls stop at the underside of the steps and never stick out. The gate is the gap beside it.
+const SW = MID - 0.4;
+box(T, WR_Z, MID, WR_Z + 0.4, 0, 6 * rise1 - SLAB, wallMat);                         // back wall, up to the step above
+for (let i = 5; i < N1; i++) {                                                         // side wall, stepped under the stairs
+  const z0 = Math.max(START + i * run, WR_Z + 0.4);
+  box(SW, z0, MID, START + (i + 1) * run, 0, (i + 1) * rise1 - SLAB, wallMat);
+}
+box(SW, LAND_Z, MID, 28.5, 0, DOOR, wallMat); box(SW, 30.5, MID, D - T, 0, DOOR, wallMat); // side wall under the landing
+box(SW, 28.5, MID, 30.5, DOOR - 0.5, DOOR, wallMat);                                  // over the washroom door
+outer.push(box(T, D - T, MID, D, 0, DOOR, wallMat));                                  // front wall; gate = MID..6.5
+tiled(T, WR_Z + 0.4, SW, D - T, 0, 0.04, 0x6fb7c9, 1);                              // 1' tiles
+
+// First-floor slab (lenter), with an opening over the stairwell:
+// over the landing + both flights from TOP_Z (where flight 2 ends) to the front wall.
+// Everything in `upper` is hidden by the "Upar ki manzil" checkbox so the ground floor can be seen.
+const slabMat = plaster(0x9a9fa6), upper = [];
+// While `design` points at d1..d4, everything added also belongs to that first-floor design.
+const d1 = [], d2 = [], d3 = [], d4 = [];
+let design = null;
+const add = (...objs) => { upper.push(...objs); if (design) design.push(...objs); return objs[0]; };
+const up = (...a) => add(box(...a));
+const upOuter = [];                                               // upper-floor walls all around (own checkbox)
+up(0, 0, W, 18, H, H + SLAB, slabMat);
+up(T, 18, W, TOP_Z, H, H + SLAB, slabMat);
+up(7, TOP_Z, W, D, H, H + SLAB, slabMat);
+up(0, 18, T, D, H, H + SLAB, slabMat);
+
+// Front projection 3'-0": under the upper room it is at first-floor level (room floor);
+// over the gate it is a balcony at the stair landing level, reached from the landing through the wall.
+const BR = 7.5;                                                    // balcony stops at the road-side room's wall (x 7..7.5)
+up(0, D, W, D + 3, H, H + SLAB, slabMat);                         // first lenter over the projection: balcony walls + under the upper room
+box(T, D - T, 7, D, DOOR, LAND, stairMat);                        // landing runs through the wall over the gate
+box(0, D, BR, D + 3, DOOR, LAND, stairMat);                       // balcony over the gate, same as the landing
+// Balcony walls: front and left as thick as the outer walls (T); the right one continues the
+// road-side room's stair-side wall (x 7..7.5) so the two meet flush
+const BF = D + 3 - T;
+box(0, BF, BR, D + 3, LAND, H, wallMat);                          // front, level with the house walls
+box(0, D, T, BF, LAND, H, wallMat);                               // left
+box(7, D, BR, BF, LAND, H, wallMat);                              // right
+upOuter.push(up(0, BF, BR, D + 3, H, 2 * H + SLAB, upWallMat));                  // same walls on the upper floor, up to room top
+upOuter.push(up(0, D, T, BF, H, 2 * H + SLAB, upWallMat));
+
+// Brown frame around every door/gate opening (two side posts + top), sticking out slightly from the wall
+const doorMat = new THREE.MeshStandardMaterial({ color: 0x8a6448, map: woodTex, roughness: 0.5 }), FW = 0.25, P = 0.06;
+function door(x0, z0, x1, z1, y0 = 0, h = DOOR) {
+  const alongX = x1 - x0 > z1 - z0;
+  const part = (a0, a1, y1, y2) => alongX
+    ? box(a0, z0 - P, a1, z1 + P, y1, y2, doorMat)
+    : box(x0 - P, a0, x1 + P, a1, y1, y2, doorMat);
+  const [a0, a1] = alongX ? [x0, x1] : [z0, z1];
+  return [part(a0, a0 + FW, y0, y0 + h), part(a1 - FW, a1, y0, y0 + h), part(a0, a1, y0 + h - FW, y0 + h)];
+}
+// Window: light-blue glass in the wall with a brown frame all round (sill/top in feet above the floor)
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fd3f0, transparent: true, opacity: 0.6 });
+function win(x0, z0, x1, z1, sill, top) {
+  const alongX = x1 - x0 > z1 - z0, g = P / 2;
+  const slab = (y1, y2, m, e) => alongX ? box(x0, z0 - e, x1, z1 + e, y1, y2, m) : box(x0 - e, z0, x1 + e, z1, y1, y2, m);
+  return [slab(F + sill, F + top, glassMat, g), slab(F + sill, F + sill + FW, doorMat, P), ...door(x0, z0, x1, z1, F + sill, top - sill)];
+}
+
+// First-floor shell shared by all designs: the road-side room above the front room. Its front wall
+// stands on the projection edge, so the projection is inside it. Its back and left walls are per design
+// (designs 1-2: door on the left facing the stair top; design 3: door at the back, from the lounge).
+const F = H + SLAB, FD = D + 3;
+const fw = (x0, z0, x1, z1, y0 = F, y1 = F + H) => up(x0, z0, x1, z1, y0, y1, upWallMat);
+const floor = (x0, z0, x1, z1, c, t = 0.04, tile = 2) => add(tiled(x0, z0, x1, z1, F, F + t, c, tile));
+upOuter.push(fw(0, 0, W, T), fw(0, T, T, D), fw(W - T, T, W, 20.5)); // first-floor outer walls (front = balcony walls)
+upOuter.push(fw(W - T, 21, W, FD));                                     // right
+upOuter.push(fw(7, FD - T, W - T, FD));                                 // front
+const shellDoorLeft = () => {                                           // designs 1 and 2
+  fw(7, 20.5, W, 21);                                                   // back
+  fw(7, 21, 7.5, 21.2); fw(7, 24, 7.5, FD); fw(7, 21.2, 7.5, 24, F + DOOR); // left + door
+  add(...door(7, 21.2, 7.5, 24, F));
+};
+
+// Furniture and fittings (feet): king bed 6'4" x 7', sofas 2'11" deep, WC 1'2" x 2'2", basin 1'8" x 1'4",
+// washing machine 2' x 2', fridge 2'6" x 2'6", kitchen counters and wardrobes 2' deep
+const wood = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.55 }), joint = mat(0x3b2410);
+const fabric = c => new THREE.MeshStandardMaterial({ color: c, map: fabricTex, roughness: 0.95 });
+const cloth = fabric(0xf1ece2), pillow = fabric(0xffffff), blanket = fabric(0x5b7fa6);
+const sofaMat = fabric(0x5d6d7e), cushion = fabric(0x7b8b9d);
+const white = new THREE.MeshStandardMaterial({ color: 0xf7f7f7, roughness: 0.15 });
+const steel = new THREE.MeshStandardMaterial({ color: 0xc0c8d0, metalness: 0.8, roughness: 0.3 });
+const tray = new THREE.MeshStandardMaterial({ color: 0xdde7ec, roughness: 0.3 });
+const tvMat = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.2 });
+const cabinet = mat(0xe9e4da), graniteTop = new THREE.MeshStandardMaterial({ color: 0x55595e, map: graniteTex, roughness: 0.25 });
+const fridgeMat = new THREE.MeshStandardMaterial({ color: 0xdfe3e6, metalness: 0.3, roughness: 0.35 });
+const potMat = mat(0xb5651d), leafMat = mat(0x3f7d3a);
+function bed(x0, z0, x1, z1, head) {                                                // headboard on the 'n' / 's' / 'e' / 'w' side
+  up(x0, z0, x1, z1, F, F + 1, wood);                                               // frame
+  up(x0 + 0.1, z0 + 0.1, x1 - 0.1, z1 - 0.1, F + 1, F + 1.75, cloth);               // mattress
+  // a = along the bed measured from the head end, b = across; mapped back to x / z
+  const alongZ = head === 'n' || head === 's', flip = head === 's' || head === 'e';
+  const [a0, a1, b0, b1] = alongZ ? [z0, z1, x0, x1] : [x0, x1, z0, z1];
+  const put = (u0, u1, v0, v1, y0, y1, m) => {
+    const [p, q] = flip ? [a1 - u1, a1 - u0] : [a0 + u0, a0 + u1];
+    return alongZ ? up(v0, p, v1, q, y0, y1, m) : up(p, v0, q, v1, y0, y1, m);
+  };
+  const L = a1 - a0, mid = (b0 + b1) / 2;
+  put(0, 0.3, b0, b1, F, F + 3.5, wood);                                            // headboard
+  put(0.5, 1.8, b0 + 0.4, mid - 0.2, F + 1.75, F + 2.15, pillow);
+  put(0.5, 1.8, mid + 0.2, b1 - 0.4, F + 1.75, F + 2.15, pillow);
+  put(2.2, L, b0 - 0.05, b1 + 0.05, F + 1.3, F + 1.82, blanket);                    // blanket over the lower part
+}
+function sofa(x0, z0, x1, z1, back) {                                               // back against the 'n' / 's' / 'e' / 'w' wall
+  const alongX = back === 'n' || back === 's';
+  up(x0, z0, x1, z1, F, F + 1.05, sofaMat);                                         // base
+  const b = { w: [x0, z0, x0 + 0.8, z1], e: [x1 - 0.8, z0, x1, z1], n: [x0, z0, x1, z0 + 0.8], s: [x0, z1 - 0.8, x1, z1] }[back];
+  up(b[0], b[1], b[2], b[3], F + 1.05, F + 2.8, sofaMat);                           // backrest
+  if (alongX) { up(x0, z0, x0 + 0.55, z1, F + 1.05, F + 2.1, sofaMat); up(x1 - 0.55, z0, x1, z1, F + 1.05, F + 2.1, sofaMat); }
+  else { up(x0, z0, x1, z0 + 0.55, F + 1.05, F + 2.1, sofaMat); up(x0, z1 - 0.55, x1, z1, F + 1.05, F + 2.1, sofaMat); }
+  const s0 = (alongX ? x0 : z0) + 0.6, s1 = (alongX ? x1 : z1) - 0.6;               // seat cushions between the arms
+  const seats = s1 - s0 > 4.5 ? 3 : 2, w = (s1 - s0) / seats;
+  for (let i = 0; i < seats; i++) {
+    const c0 = s0 + i * w + 0.04, c1 = s0 + (i + 1) * w - 0.04;
+    if (alongX) { const [d0, d1] = back === 'n' ? [z0 + 0.8, z1 - 0.05] : [z0 + 0.05, z1 - 0.8]; up(c0, d0, c1, d1, F + 1.05, F + 1.55, cushion); }
+    else { const [d0, d1] = back === 'w' ? [x0 + 0.8, x1 - 0.05] : [x0 + 0.05, x1 - 0.8]; up(d0, c0, d1, c1, F + 1.05, F + 1.55, cushion); }
+  }
+}
+function table(x0, z0, x1, z1, h = 1.4) {                                           // top + 4 legs
+  up(x0, z0, x1, z1, F + h - 0.12, F + h, wood);
+  for (const [x, z] of [[x0, z0], [x1 - 0.15, z0], [x0, z1 - 0.15], [x1 - 0.15, z1 - 0.15]]) up(x, z, x + 0.15, z + 0.15, F, F + h - 0.12, wood);
+}
+function ctr(x0, z0, x1, z1) {                                                      // kitchen cabinet + granite top
+  up(x0, z0, x1, z1, F, F + 2.65, cabinet);
+  up(x0, z0, x1, z1, F + 2.65, F + 2.8, graniteTop);
+}
+function wc(x0, z0, x1, z1, wall) {                                                 // cistern on the n / s wall
+  up(x0, z0, x1, z1, F, F + 1.3, white);
+  if (wall === 'n') up(x0, z0, x1, z0 + 0.6, F, F + 2.7, white);
+  else up(x0, z1 - 0.6, x1, z1, F, F + 2.7, white);
+}
+function basin(x0, z0, x1, z1) {                                                    // basin counter + steel bowl
+  up(x0, z0, x1, z1, F, F + 2.7, white);
+  up(x0 + 0.25, z0 + 0.25, x1 - 0.25, z1 - 0.25, F + 2.7, F + 2.76, steel);
+}
+const shower = (x0, z0, x1, z1) => up(x0, z0, x1, z1, F, F + 0.12, tray);           // shower tray
+const glassPanel = (x0, z0, x1, z1) => up(x0, z0, x1, z1, F + 0.12, F + 6.5, glassMat);
+function plant(x, z) {                                                              // pot plant
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.42, 1.2, 16), potMat);
+  pot.position.set(x, F + 0.6, z);
+  const leaves = new THREE.Mesh(new THREE.IcosahedronGeometry(0.95, 1), leafMat);
+  leaves.position.set(x, F + 2.2, z);
+  leaves.scale.set(1, 1.3, 1);
+  for (const m of [pot, leaves]) { m.castShadow = m.receiveShadow = true; scene.add(m); add(m); }
+}
+
+// ---- Design 1: the layout built step by step with the owner ----
+design = d1;
+shellDoorLeft();
+floor(7.5, 21, W - T, FD - T, 0xc8a2d6, 0.02);                          // road-side room
+// Balcony strip walled off from the room and split: kitchen (left), washroom (right, Irshad side)
+fw(7.5, D - 0.5, 9, D); fw(11.5, D - 0.5, 16.5, D); fw(18.5, D - 0.5, W - T, D); // partition
+fw(9, D - 0.5, 11.5, D, F + DOOR); fw(16.5, D - 0.5, 18.5, D, F + DOOR);         // kitchen + washroom doors
+fw(14, D, 14.5, FD - T);                                                          // kitchen | washroom
+floor(14.5, D, W - T, FD - T, 0x6fb7c9, 0.04, 1);                                 // washroom tiles
+floor(7.5, D, 14, FD - T, 0xf2d16b);                                              // kitchen floor
+// Over the two ground-floor back rooms (x T..W-T, z T..10.75, front wall on top of theirs):
+// ~70% room (left), ~30% right: one door from the room into a dressing area with wardrobes along the
+// outer wall, and from there a door into the washroom behind it.
+fw(T, 10.75, 6, 11.25); fw(9, 10.75, W - T, 11.25); fw(6, 10.75, 9, 11.25, F + DOOR); // front wall + room door
+fw(14.5, T, 15, 7.5); fw(14.5, 10, 15, 10.75); fw(14.5, 7.5, 15, 10, F + DOOR);    // room | dressing, one door
+fw(15, 6.25, 15.5, 6.75); fw(18, 6.25, W - T, 6.75); fw(15.5, 6.25, 18, 6.75, F + DOOR); // dressing | washroom + door
+up(W - T - 2, 6.75, W - T, 10.75, F, F + DOOR, wood);                             // wardrobes, 2' deep
+for (const z of [8.08, 9.41]) up(W - T - 2.04, z - 0.03, W - T - 2, z + 0.03, F, F + DOOR, joint); // shutter joints
+floor(T, T, 14.5, 10.75, 0xa8d5ba);                                                // room     13'9" x 10'
+floor(15, T, W - T, 6.25, 0x6fb7c9, 0.04, 1);                                      // washroom 5'8" x 5'6"
+floor(15, 6.75, W - T, 10.75, 0xe8d5b0);                                           // dressing 5'8" x 4'
+
+// ---- Design 2: fresh 2-bedroom flat, every room above the NBC 2016 minimum with room to spare ----
+//   back:   bedroom 2 (left) | kitchen with L-counter (right)
+//   middle: hall / dining (left, open to the stair top) | common bathroom (right)
+//   front:  master bedroom over the road-side room (projection inside it) + attached bath
+design = d2;
+shellDoorLeft();
+fw(11, T, 11.5, 11.5);                                                             // bedroom 2 | kitchen
+fw(T, 11.5, 6.5, 12); fw(9.5, 11.5, 12.5, 12); fw(15.5, 11.5, W - T, 12);         // back row | hall
+fw(6.5, 11.5, 9.5, 12, F + DOOR); fw(12.5, 11.5, 15.5, 12, F + DOOR);             // bedroom 2 + kitchen doors
+fw(14.5, 12, 15, 13); fw(14.5, 15.5, 15, 20.5); fw(14.5, 13, 15, 15.5, F + DOOR);  // hall | common bath + door
+fw(14.5, 21, 15, 28); fw(15, 27.5, 16, 28); fw(18.5, 27.5, W - T, 28);             // master bath walls
+fw(16, 27.5, 18.5, 28, F + DOOR);                                                  // master bath door
+ctr(11.5, T, W - T, T + 2);                                                        // kitchen counter, back wall
+ctr(W - T - 2, T + 2, W - T, 9);                                                   // kitchen counter, right wall
+up(T, TOP_Z - 0.3, MID, TOP_Z, F, F + 3, wallMat);                                 // railing over flight 1
+up(T, D, 7, D + 0.3, F, F + 3, wallMat);                                           // railing, road side of the stairwell
+floor(T, T, 11, 11.5, 0x8fb8d8);                                                   // bedroom 2   10'3" x 10'9"
+floor(11.5, T, W - T, 11.5, 0xf2d16b);                                             // kitchen      9'2" x 10'9"
+floor(T, 12, 14.5, 20.5, 0xd9c38a); floor(T, 20.5, 7, TOP_Z, 0xd9c38a);             // hall        13'9" x 8'6" + stair top
+floor(15, 12, W - T, 20.5, 0x6fb7c9, 0.04, 1);                                     // common bath  5'8" x 8'6"
+floor(7.5, 21, W - T, FD - T, 0xc8a2d6, 0.02);                                     // master bedroom
+floor(15, 21, W - T, 27.5, 0x6fb7c9, 0.04, 1);                                     // master bath  5'8" x 6'6"
+
+// ---- Design 3: 1 big master suite + 1 guest room (sofa + TV); no space left empty ----
+// Plan has no north arrow; taken the usual way (top of the drawing = North): back = North,
+// road = South, left = West, Irshad's side = East. Neighbours on W, N and E, so only the road side
+// gets windows; kitchen and washrooms vent through the roof.
+//   Stair top (SW) -> entrance lobby (the path to every room, no seating) -> small lobby with the
+//   guest room (NE, the only sitting room: sofas + TV), the common washroom (+ washing machine)
+//   and the closed kitchen side by side. The master bedroom has its own door on the stair top,
+//   so a guest never goes near it.
+//   Master suite (S): you enter the bedroom first; from the bedroom one door into the dressing
+//   (wardrobes on one side) and from the dressing the door to the bath - no bath door in the bedroom.
+//   Vastu: stairs SW, master S (bed head to the south), kitchen NW (cook facing east),
+//   guest room NE, washrooms W / E (none in NE, SW or the centre).
+// Sizes (ft): king bed 6'4" x 7', 3-seat sofa 6'6" x 2'11", 2-seat sofa 5' x 2'9", TV unit 5' x 1'6", WC 1'2" x 2'2",
+// basin 1'8" x 1'4", shower 3' x 3' / 4'8" x 2'6", washing machine 2' x 2', fridge 2'6" x 2'6",
+// counters and wardrobes 2' deep; >= 2' clear in front of every fixture and beside the bed.
+design = d3;
+
+// walls
+fw(7, 20.5, 13, 21); fw(15.5, 20.5, W, 21); fw(13, 20.5, 15.5, 21, F + DOOR);      // shell back wall + dressing door
+fw(7, 21, 7.5, 21.5); fw(7, 24, 7.5, FD); fw(7, 21.5, 7.5, 24, F + DOOR);          // shell left wall + master door
+fw(10.5, T, 11, 8.5); fw(10.5, 11, 11, 20.5); fw(10.5, 8.5, 11, 11, F + DOOR);     // kitchen / lobbies | guest room / dressing
+fw(11, 12.5, W - T, 13);                                                           // guest room | dressing + bath
+fw(15.5, 13, 16, 15.8); fw(15.5, 18.3, 16, 20.5); fw(15.5, 15.8, 16, 18.3, F + DOOR); // dressing | bath + door
+fw(T, 7, 7.75, 7.5); fw(10.25, 7, 10.5, 7.5); fw(7.75, 7, 10.25, 7.5, F + DOOR);   // kitchen | washroom + lobby, door
+fw(7, 7.5, 7.5, 11); fw(7, 13.5, 7.5, 14); fw(7, 11, 7.5, 13.5, F + DOOR);         // common washroom | lobby, door
+fw(T, 13.5, 7, 14);                                                                // common washroom | entrance lobby
+up(T, TOP_Z - 0.3, MID, TOP_Z, F, F + 3, wallMat);                                 // railing over flight 1
+up(T, D, 7, D + 0.3, F, F + 3, wallMat);                                           // railing, road side of the stairwell
+
+// floors
+floor(T, T, 10.5, 7, 0xf2d16b);                                                    // kitchen          9'9" x 6'3"
+floor(T, 7.5, 7, 13.5, 0x6fb7c9, 0.04, 1);                                         // common washroom  6'3" x 6'
+floor(7.5, 7.5, 10.5, 14, 0xe6dcc6);                                               // small lobby      3' wide
+floor(T, 14, 10.5, 20.5, 0xe6dcc6); floor(T, 20.5, 7, TOP_Z, 0xe6dcc6);             // entrance lobby from the stair top
+floor(11, T, W - T, 12.5, 0xd9c38a);                                               // guest room       9'8" x 11'9"
+floor(11, 13, 15.5, 20.5, 0xe8d5b0);                                               // dressing         4'6" x 7'6"
+floor(16, 13, W - T, 20.5, 0x6fb7c9, 0.04, 1);                                     // master bath      4'8" x 7'6"
+floor(7.5, 21, W - T, FD - T, 0xc8a2d6, 0.02);                                     // master bedroom  13'2" x 14'
+
+// kitchen: hob on the east counter (cook faces east), sink on the north counter
+ctr(8.5, T, 10.5, 5); ctr(T, T, 8.5, T + 2);
+up(9.2, 1.8, 10.3, 3.8, F + 2.8, F + 2.85, tvMat);                                 // hob
+up(4, 1, 5.8, 2.4, F + 2.8, F + 2.85, steel);                                      // sink
+up(T, 4.5, T + 2.5, 7, F, F + 5.5, fridgeMat);                                    // fridge
+// common washroom: shower (NW), WC (north wall, faces south), basin (south wall), washing machine (SW)
+shower(T, 7.5, 3.75, 10.5); glassPanel(T, 10.45, 2.5, 10.5);
+wc(4.8, 7.5, 6, 9.7, 'n');
+basin(3, 12.17, 4.7, 13.5);
+up(T, 11.5, T + 2, 13.5, F, F + 2.8, white); up(T + 0.4, 11.9, T + 1.6, 13.1, F + 2.8, F + 2.85, steel); // washing machine
+// guest room: 3-seat sofa on the west wall + 2-seat sofa on the north wall (L), coffee table,
+// TV on the east wall 6'7" from the 3-seater; the south strip stays clear as the way in from the door
+sofa(11, 1.25, 13.9, 7.75, 'w');
+sofa(14.5, T, 19.5, 3.5, 'n');
+table(15.2, 4.6, 17.6, 7.4);                                                       // coffee table
+plant(19.9, 11.7);
+up(W - T - 1.5, 4.5, W - T, 9.5, F, F + 1.8, wood); up(W - T - 0.15, 5.25, W - T, 8.75, F + 3, F + 5.3, tvMat);
+// dressing: wardrobes along the west side, 7'6" run
+up(11, 13, 13, 20.5, F, F + DOOR, wood);
+for (const z of [14.875, 16.75, 18.625]) up(13, z - 0.03, 13.04, z + 0.03, F, F + DOOR, joint);
+// master bath: shower at the far (north) end, basin on the east wall, WC on the south wall facing north
+shower(16, 13, W - T, 15.5); glassPanel(16, 15.45, 18.3, 15.5);
+basin(W - T - 1.33, 16, W - T, 17.7);
+wc(17, 18.3, 18.2, 20.5, 's');
+// master bedroom: king bed, head to the south; bedside tables; TV on the north wall
+bed(10.9, 28, 17.23, 35, 's');
+up(9.3, 33.5, 10.7, 35, F, F + 1.8, wood); up(17.43, 33.5, 18.83, 35, F, F + 1.8, wood);
+up(16.5, 21, 20.5, 22.5, F, F + 1.8, wood); up(17.2, 21, 19.8, 21.15, F + 3, F + 5.2, tvMat);
+
+add(...door(7, 21.5, 7.5, 24, F));           // master bedroom, from the stair top
+add(...door(13, 20.5, 15.5, 21, F));         // dressing, from the bedroom
+add(...door(15.5, 15.8, 16, 18.3, F));       // bath, from the dressing
+add(...door(7, 11, 7.5, 13.5, F));           // common washroom, from the lobby
+add(...door(7.75, 7, 10.25, 7.5, F));        // kitchen, from the lobby
+add(...door(10.5, 8.5, 11, 11, F));          // guest room, from the lobby
+add(...win(7.9, FD - T, 10.4, FD, 3, 7));    // master bedroom, road side (both sides of the bed)
+add(...win(17.8, FD - T, 20.3, FD, 3, 7));
+design = null;
+
+// ---- Design 4: master suite at the back, guest room at the front, an open hall in the middle ----
+//   The stair top opens into a big open hall (~165 sq ft with the stair top). Every room opens off it:
+//   guest room (front, road windows, sofas + TV), common washroom (+ washing machine), closed kitchen
+//   (W, cook faces east) and the master bedroom (back, 13'2" x 10'9").
+//   Master: the door is at the bedroom's south-west corner and the bed stands against the east wall,
+//   so nobody sees the bed from the door. Bedroom -> dressing (wardrobes) -> bath (NW); no bath door
+//   in the bedroom. Neighbours on W, N and E: master suite and kitchen vent through the roof.
+//   Vastu: master at the back (North) is the owner's choice; hall in the centre stays open,
+//   bath NW, kitchen W, no toilet in NE, SW or the centre.
+design = d4;
+fw(13.5, 20.5, W, 21);                                                             // hall | common washroom (shell back wall, east part)
+fw(7, 25.2, 7.5, FD);                                                              // stairwell edge = hall + guest room west wall
+fw(T, 11.5, 9, 12); fw(11.5, 11.5, W - T, 12); fw(9, 11.5, 11.5, 12, F + DOOR);    // back rooms | kitchen + hall, master door
+fw(7, T, 7.5, 8); fw(7, 10.5, 7.5, 11.5); fw(7, 8, 7.5, 10.5, F + DOOR);           // bath + dressing | bedroom, dressing door
+fw(T, 6, 3.5, 6.5); fw(6, 6, 7, 6.5); fw(3.5, 6, 6, 6.5, F + DOOR);                // bath | dressing + door
+fw(8.25, 12, 8.75, 14); fw(8.25, 16.5, 8.75, 20.5); fw(8.25, 14, 8.75, 16.5, F + DOOR); // kitchen | hall + door
+fw(T, 20, 8.25, 20.5);                                                             // kitchen | stair top
+fw(13.5, 21, 14, 22); fw(13.5, 24.5, 14, 26.5); fw(13.5, 22, 14, 24.5, F + DOOR);  // hall | common washroom + door
+fw(7.5, 26.5, 8.5, 27); fw(11, 26.5, W - T, 27); fw(8.5, 26.5, 11, 27, F + DOOR);  // hall + washroom | guest room, door
+up(T, TOP_Z - 0.3, MID, TOP_Z, F, F + 3, wallMat);                                 // railing over flight 1
+up(T, D, 7, D + 0.3, F, F + 3, wallMat);                                           // railing, road side of the stairwell
+
+floor(T, T, 7, 6, 0x6fb7c9, 0.04, 1);                                              // master bath      6'3" x 5'3"
+floor(T, 6.5, 7, 11.5, 0xe8d5b0);                                                  // dressing         6'3" x 5'
+floor(7.5, T, W - T, 11.5, 0xc8a2d6);                                              // master bedroom  13'2" x 10'9"
+floor(T, 12, 8.25, 20, 0xf2d16b);                                                  // kitchen          7'6" x 8'
+floor(8.75, 12, W - T, 20.5, 0xe6dcc6); floor(7, 20.5, 13.5, 26.5, 0xe6dcc6);       // open hall
+floor(T, 20.5, 7, TOP_Z, 0xe6dcc6);                                                // stair top (part of the hall)
+floor(14, 21, W - T, 26.5, 0x6fb7c9, 0.04, 1);                                     // common washroom  6'8" x 5'6"
+floor(7.5, 27, W - T, FD - T, 0xd9c38a);                                           // guest room      13'2" x 8'
+
+// master bath: shower (NW corner), WC (north wall, faces south), basin (west wall)
+shower(T, T, 3.75, 3.75); glassPanel(3.7, T, 3.75, 2.5);
+wc(4.8, T, 6, T + 2.2, 'n');
+basin(T, 4, T + 1.33, 5.7);
+// dressing: wardrobes along the west wall, 5' run
+up(T, 6.5, T + 2, 11.5, F, F + DOOR, wood);
+for (const z of [8.17, 9.83]) up(T + 2, z - 0.03, T + 2.04, z + 0.03, F, F + DOOR, joint);
+// master bedroom: king bed against the east wall (head east), bedside tables, TV on the west wall
+bed(13.67, 2.95, W - T, 9.28, 'e');
+up(19.17, 1.3, 20.57, 2.8, F, F + 1.8, wood); up(19.17, 9.43, 20.57, 10.93, F, F + 1.8, wood);
+up(7.5, 2.5, 9, 7.5, F, F + 1.8, wood); up(7.5, 3.25, 7.65, 6.75, F + 3, F + 5.3, tvMat);
+// kitchen: sink on the north counter, hob on the east counter (cook faces east), fridge in the corner
+ctr(T, 12, 8.25, 14); ctr(6.25, 17, 8.25, 20);
+up(3, 12.3, 4.8, 13.7, F + 2.8, F + 2.85, steel);                                  // sink
+up(6.9, 17.5, 8, 19.5, F + 2.8, F + 2.85, tvMat);                                  // hob
+up(T, 17.5, T + 2.5, 20, F, F + 5.5, fridgeMat);                                   // fridge
+// common washroom: WC (north wall, faces south), basin by the door, shower (NE), washing machine (SE)
+wc(15.2, 21, 16.4, 23.2, 'n');
+basin(14.6, 25.17, 16.3, 26.5);
+shower(17.67, 21, W - T, 24); glassPanel(17.67, 21, 17.72, 22.8);
+up(W - T - 2, 24.5, W - T, 26.5, F, F + 2.8, white); up(W - T - 1.6, 24.9, W - T - 0.4, 26.1, F + 2.8, F + 2.85, steel); // washing machine
+// guest room: 3-seat sofa on the east wall, 2-seat sofa under the road windows, coffee table, TV on the west wall
+sofa(17.77, 28, W - T, 34.5, 'e');
+sofa(11, 32.25, 16, FD - T, 's');
+table(12.5, 29.3, 16, 31.1);
+up(7.5, 29, 9, 34, F, F + 1.8, wood); up(7.5, 29.75, 7.65, 33.25, F + 3, F + 5.3, tvMat);
+// hall: kept open; two plants in the corners
+plant(20, 12.8); plant(12.8, 25.8);
+
+add(...door(9, 11.5, 11.5, 12, F));          // master bedroom, from the hall
+add(...door(7, 8, 7.5, 10.5, F));            // dressing, from the bedroom
+add(...door(3.5, 6, 6, 6.5, F));             // master bath, from the dressing
+add(...door(8.25, 14, 8.75, 16.5, F));       // kitchen, from the hall
+add(...door(13.5, 22, 14, 24.5, F));         // common washroom, from the hall
+add(...door(8.5, 26.5, 11, 27, F));          // guest room, from the hall
+add(...win(8.25, FD - T, 10.75, FD, 3, 7));  // guest room, road side
+add(...win(11.75, FD - T, 15.75, FD, 3, 7));
+design = null;
+
+door(MID, D - T, 6.5, D);                   // main gate
+door(8.1, D - T, 11, D);                    // road-side room, from the road
+door(6, 10.75, 9, 11.25);                   // room 1
+door(14, 10.75, 17, 11.25);                 // room 2
+door(7, 21.8, 7.5, 24.8);                   // road-side room, from the passage
+door(SW, 28.5, MID, 30.5, 0, DOOR - 0.5);   // washroom under the stairs
+design = d1;
+add(...door(9, D - 0.5, 11.5, D, F));       // kitchen
+add(...door(16.5, D - 0.5, 18.5, D, F));    // washroom
+add(...door(6, 10.75, 9, 11.25, F));        // back room
+add(...door(14.5, 7.5, 15, 10, F));         // its dressing area
+add(...door(15.5, 6.25, 18, 6.75, F));      // washroom, from the dressing area
+design = d2;
+add(...door(6.5, 11.5, 9.5, 12, F));        // bedroom 2
+add(...door(12.5, 11.5, 15.5, 12, F));      // kitchen
+add(...door(14.5, 13, 15, 15.5, F));        // common bath
+add(...door(16, 27.5, 18.5, 28, F));        // master bath
+design = null;
+
+
+// Labels (all in one group so the "Naam dikhao" checkbox can hide them)
+const labelGroup = new THREE.Group();
+labelGroup.visible = false;                                        // names hidden by default
+scene.add(labelGroup);
+function label(text, x, y, z, size = 1.4) {
+  const c = document.createElement('canvas'), g = c.getContext('2d');
+  c.width = 512; c.height = 128;
+  g.font = 'bold 56px system-ui, sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#fffe'; g.roundRect(4, 14, 504, 100, 20); g.fill();
+  g.fillStyle = '#233'; g.fillText(text, 256, 64);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+  s.scale.set(size * 4, size, 1);
+  s.position.set(x, y, z);
+  labelGroup.add(s);
+  return s;
+}
+label('LOBBY', 12, 4, 16);
+label('ROOM 1', 5.6, 4, 5.5);
+label('ROOM 2', 16, 4, 5.5);
+label('ROOM 13\' x 10\'11"', 14, 4, 26.5, 1.6);
+label('STAIRS', 2.4, 12, 24.5, 1.1);
+label('WASHROOM', 2.3, 3, 29.5, 1);
+label('ROAD 9\'-0" WIDE', W / 2, 1, D + 7.5, 1.8);
+label('HOUSE OF OTHER', W / 2, 2, -4, 1.6);
+label('HOUSE OF SH. IRSHAD', W + 5, 2, D / 2, 1.6);
+design = d1;
+add(label('ROOM (UPAR)', 14, F + H + 2, 27, 1.6));
+add(label('KITCHEN', 10.8, F + 4, 34, 1.1));
+add(label('WASHROOM', 17.6, F + 4, 34, 1.1));
+add(label('ROOM (UPAR PICHE)', 7.6, F + 4, 5.5, 1.3));
+add(label('WASHROOM', 17.8, F + 4, 3.5, 0.9));
+add(label('ALMARI / DRESSING', 17.4, F + 4, 8.7, 0.8));
+design = d2;
+add(label('BEDROOM 2', 5.9, F + 4, 6, 1.2));
+add(label('KITCHEN', 16, F + 4, 6, 1.2));
+add(label('HALL', 7, F + 4, 16.5, 1.4));
+add(label('BATHROOM', 17.8, F + 4, 16.5, 1));
+add(label('MASTER BEDROOM', 11, F + 4, 29.5, 1.3));
+add(label('BATH', 17.8, F + 4, 24.2, 1));
+design = d3;
+add(label('LOBBY', 5.6, F + 4.5, 17.3, 1));
+add(label('GUEST ROOM', 15.8, F + 5.2, 6.6, 1.2));
+add(label('(SOFA + TV)', 15.8, F + 4, 6.6, 0.8));
+add(label('COMMON WASHROOM', 3.9, F + 5.2, 10.5, 0.8));
+add(label('+ WASHING MACHINE', 3.9, F + 4, 10.5, 0.8));
+add(label('KITCHEN', 5.6, F + 4.5, 3.9, 1.1));
+add(label('MASTER BEDROOM', 14, F + 5, 25.5, 1.4));
+add(label('DRESSING', 13.2, F + 4.5, 16.7, 0.8));
+add(label('BATH', 18.3, F + 4.5, 17, 0.9));
+design = d4;
+add(label('MASTER BEDROOM', 14, F + 5, 6, 1.4));
+add(label('DRESSING', 3.9, F + 4.5, 9, 0.8));
+add(label('BATH', 3.9, F + 4.5, 3.4, 0.9));
+add(label('KITCHEN', 4.5, F + 4.5, 16, 1.1));
+add(label('HALL (KHULI JAGAH)', 14.5, F + 4.5, 16.2, 1.2));
+add(label('COMMON WASHROOM', 17.3, F + 5.2, 23.7, 0.8));
+add(label('+ WASHING MACHINE', 17.3, F + 4, 23.7, 0.8));
+add(label('GUEST ROOM', 14, F + 5.2, 31, 1.2));
+add(label('(SOFA + TV)', 14, F + 4, 31, 0.8));
+design = null;
+
+const toggle = (id, objs) => (document.getElementById(id).onchange = e => objs.forEach(o => (o.visible = e.target.checked)));
+const floorSel = document.getElementById('floor'), upOuterCb = document.getElementById('upOuter');
+const syncUpper = () => {
+  const v = floorSel.value, on = v !== 'hide';
+  upper.forEach(o => (o.visible = on));
+  d1.forEach(o => (o.visible = v === 'd1'));
+  d2.forEach(o => (o.visible = v === 'd2'));
+  d3.forEach(o => (o.visible = v === 'd3'));
+  d4.forEach(o => (o.visible = v === 'd4'));
+  upOuter.forEach(o => (o.visible = on && upOuterCb.checked));
+};
+floorSel.onchange = upOuterCb.onchange = syncUpper;
+syncUpper();
+toggle('outer', outer);
+document.getElementById('labels').onchange = e => (labelGroup.visible = e.target.checked);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+</script>
+</body>
+</html>
